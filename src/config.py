@@ -45,20 +45,39 @@ class ServiceNowConfig(BaseModel):
         env_prefix = "SN_"
 
 
-class TeamsConfig(BaseModel):
-    """Teams configuration settings."""
-    webhook_url: str = Field(default_factory=lambda: os.getenv("TEAMS_WEBHOOK_URL", ""))
+class SlackConfig(BaseModel):
+    """Slack configuration settings."""
+    webhook_url: str = Field(default_factory=lambda: os.getenv("SLACK_WEBHOOK_URL", ""))
 
     @validator('webhook_url')
     def validate_webhook(cls, v):
         if not v:
-            raise ValueError('Teams webhook URL is required')
+            raise ValueError('Slack webhook URL is required')
         if not v.startswith('https://'):
-            raise ValueError('Teams webhook must be HTTPS')
+            raise ValueError('Slack webhook must be HTTPS')
         return v
 
     class Config:
-        env_prefix = "TEAMS_"
+        env_prefix = "SLACK_"
+
+
+class ConfluenceConfig(BaseModel):
+    """Confluence configuration settings."""
+    enabled: bool = Field(default_factory=lambda: os.getenv("CONFLUENCE_ENABLED", "False").lower() == "true")
+    base_url: str = Field(default_factory=lambda: os.getenv("CONFLUENCE_BASE_URL", ""))
+    email: str = Field(default_factory=lambda: os.getenv("CONFLUENCE_EMAIL", ""))
+    api_token: str = Field(default_factory=lambda: os.getenv("CONFLUENCE_API_TOKEN", ""))
+    space_key: str = Field(default_factory=lambda: os.getenv("CONFLUENCE_SPACE_KEY", ""))
+    parent_page_id: str = Field(default_factory=lambda: os.getenv("CONFLUENCE_PARENT_PAGE_ID", ""))
+
+    @validator('base_url')
+    def validate_base_url(cls, v):
+        if v and not v.startswith('https://'):
+            raise ValueError('Confluence base URL must be HTTPS')
+        return v
+
+    class Config:
+        env_prefix = "CONFLUENCE_"
 
 
 class AgentConfig(BaseModel):
@@ -79,7 +98,8 @@ class AppConfig(BaseModel):
     """Complete application configuration."""
     jira: JiraConfig
     servicenow: ServiceNowConfig
-    teams: TeamsConfig
+    slack: SlackConfig
+    confluence: ConfluenceConfig
     agent: AgentConfig
 
     @staticmethod
@@ -89,7 +109,8 @@ class AppConfig(BaseModel):
             return AppConfig(
                 jira=JiraConfig(),
                 servicenow=ServiceNowConfig(),
-                teams=TeamsConfig(),
+                slack=SlackConfig(),
+                confluence=ConfluenceConfig(),
                 agent=AgentConfig()
             )
         except ValueError as e:

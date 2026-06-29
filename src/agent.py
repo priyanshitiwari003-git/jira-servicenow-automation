@@ -6,7 +6,8 @@ from datetime import datetime
 from src.config import AppConfig
 from src.jira_client import JiraClient
 from src.servicenow_client import ServiceNowClient
-from src.teams_notifier import TeamsNotifier
+from src.slack_notifier import SlackNotifier
+from src.confluence_client import ConfluenceClient
 from src.state_manager import StateManager
 from src.models import JiraStory, SyncResult, StoryUpdateSetMapping
 from src.logger import LoggerMixin, setup_logging
@@ -25,9 +26,10 @@ class JiraServiceNowDeploymentAgent(LoggerMixin):
         self.config = config
         self.jira_client = JiraClient(config.jira)
         self.servicenow_client = ServiceNowClient(config.servicenow)
-        self.teams_notifier = TeamsNotifier(config.teams)
+        self.slack_notifier = SlackNotifier(config.slack, config.servicenow)
+        self.confluence_client = ConfluenceClient(config.confluence)
         self.state_manager = StateManager(config.agent.state_file_path)
-        self.logger = setup_logging(config.agent)
+        self._logger = setup_logging(config.agent)
 
     def run(self, dry_run: bool = False) -> SyncResult:
         """Run deployment sync.
@@ -78,6 +80,11 @@ class JiraServiceNowDeploymentAgent(LoggerMixin):
 
             # Process each story and add update sets to parent
             for story in stories:
+                if self.state_manager.is_story_processed(story.key):
+                    self.logger.info(f"Skipping already processed story | key={story.key}")
+                    result.skipped_count += 1
+                    continue
+
                 try:
                     self._process_story(story, parent_sys_id, result, dry_run)
                 except Exception as e:
@@ -100,7 +107,7 @@ class JiraServiceNowDeploymentAgent(LoggerMixin):
             result.success = False
             result.errors.append(str(e))
             self.state_manager.record_sync_failure(str(e))
-            self.teams_notifier.send_error_notification(str(e), result.sprint_name)
+            self.slack_notifier.send_error_notification(str(e), result.sprint_name)
             return self._finalize_result(result, start_time, dry_run)
 
         # Update state
@@ -110,9 +117,19 @@ class JiraServiceNowDeploymentAgent(LoggerMixin):
         else:
             self.state_manager.record_sync_failure(f"{result.failed_count} stories failed")
 
-        # Send Teams notification
+        if not dry_run and result.parent_update_set_id:
+            result.child_update_set_summaries = self.servicenow_client.get_child_update_set_summaries(
+                result.parent_update_set_id
+            )
+
+        # Publish external reports
         if not dry_run:
-            self.teams_notifier.send_deployment_report(result)
+            try:
+                self.confluence_client.publish_weekly_deployment(result)
+            except Exception as e:
+                self.logger.error(f"Failed to publish Confluence deployment page: {e}")
+
+            self.slack_notifier.send_deployment_report(result)
 
         return self._finalize_result(result, start_time, dry_run)
 
@@ -212,6 +229,7 @@ class JiraServiceNowDeploymentAgent(LoggerMixin):
         """Clean up resources."""
         self.jira_client.close()
         self.servicenow_client.close()
+        self.confluence_client.close()
 
     def __enter__(self):
         return self

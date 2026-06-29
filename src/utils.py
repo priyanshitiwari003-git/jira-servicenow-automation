@@ -30,24 +30,22 @@ def sanitize_name(name: str) -> str:
 def generate_parent_deployment_name(sprint_name: Optional[str] = None) -> str:
     """Generate a parent deployment update set name.
 
-    Naming format: DEPLOYMENT-{SPRINT}-{DATE}
-    Example: DEPLOYMENT-SPRINT-12-2024-06-15
+    Naming format: DEV-Q{quarter}{year}-{MONTH}-WEEK{week_of_month}
+    Example: DEV-Q22026-JUNE-WEEK2
 
     Args:
-        sprint_name: Jira sprint name
+        sprint_name: Jira sprint name (unused, kept for compatibility)
 
     Returns:
         Parent update set name
     """
-    date_str = datetime.now().strftime('%Y-%m-%d')
+    now = datetime.now()
+    quarter = ((now.month - 1) // 3) + 1
+    year = now.year
+    month_name = now.strftime('%B').upper()
+    week_of_month = ((now.day - 1) // 7) + 1
 
-    if sprint_name:
-        sprint_part = sanitize_name(sprint_name)
-        parent_name = f"DEPLOYMENT-{sprint_part}-{date_str}"
-    else:
-        parent_name = f"DEPLOYMENT-{date_str}"
-
-    return parent_name
+    return f"DEV-Q{quarter}{year}-{month_name}-WEEK{week_of_month}"
 
 
 def format_duration(seconds: float) -> str:

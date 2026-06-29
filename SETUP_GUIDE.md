@@ -5,7 +5,7 @@ This guide walks you through getting all the credentials and configuring your `.
 ## Table of Contents
 1. [Jira Configuration](#jira-configuration)
 2. [ServiceNow Configuration](#servicenow-configuration)
-3. [Teams Webhook Configuration](#teams-webhook-configuration)
+3. [Slack Webhook Configuration](#slack-webhook-configuration)
 4. [Final .env File](#final-env-file)
 5. [Verify Configuration](#verify-configuration)
 
@@ -224,44 +224,24 @@ SN_TABLE=sn_chg_management_update_set
 
 ---
 
-## Teams Webhook Configuration
+## Slack Webhook Configuration
 
-### Step 1: Access Your Teams Channel
+### Step 1: Create an Incoming Webhook in Slack
 
-1. Open Microsoft Teams
-2. Go to the channel where you want deployment reports
-3. Click **⋯ (More options)** at the top right
-4. Select **"Connectors"**
+1. Open Slack and go to the workspace where you want deployment reports
+2. Open **Apps** and search for **Incoming Webhooks**
+3. Click **Add to Slack** or **Configure** for the channel
+4. Choose the target channel and click **Add Incoming Webhooks integration**
 
-### Step 2: Search for Incoming Webhook
+### Step 2: Copy the Webhook URL
 
-1. In the connector search, type: **"Incoming Webhook"**
-2. Click on **"Incoming Webhook"** (by Microsoft)
-3. Click **"Add"** or **"Configure"** button
-
-### Step 3: Configure the Webhook
-
-1. In the popup:
+1. After configuring the webhook, copy the generated URL
+2. Save it immediately in your `.env`:
    ```
-   Name: Jira ServiceNow Agent
-   (or any name you like)
-   ```
-2. **Optional**: Upload an image for the webhook
-3. Click **"Create"**
-
-### Step 4: Copy the Webhook URL
-
-1. You'll see a long URL starting with:
-   ```
-   https://outlook.webhook.office.com/webhookb2/...
-   ```
-2. **Copy the entire URL** (click copy button)
-3. Save it immediately in your `.env`:
-   ```
-   TEAMS_WEBHOOK_URL=https://outlook.webhook.office.com/webhookb2/XXXXX...
+  SLACK_WEBHOOK_URL=https://example.com/slack-webhook-url
    ```
 
-### Step 5: Test the Webhook
+### Step 3: Test the Webhook
 
 Run this command to test:
 
@@ -269,25 +249,18 @@ Run this command to test:
 curl -X POST \
   -H 'Content-Type: application/json' \
   -d '{
-    "@type": "MessageCard",
-    "@context": "https://schema.org/extensions",
-    "summary": "Test",
-    "themeColor": "0078D4",
-    "sections": [{
-      "activityTitle": "Test Message",
-      "facts": [{"name": "Status", "value": "Working!"}]
-    }]
+    "text": "Test message from Jira-ServiceNow Deployment Agent"
   }' \
-  "YOUR_TEAMS_WEBHOOK_URL_HERE"
+  "YOUR_SLACK_WEBHOOK_URL_HERE"
 ```
 
 **If it works:**
-- You'll see the message appear in Teams
+- You'll see the message appear in Slack
 - Your webhook is configured correctly
 
-### Example Teams Configuration
+### Example Slack Configuration
 ```
-TEAMS_WEBHOOK_URL=https://outlook.webhook.office.com/webhookb2/XXXXX/IncomingWebhook/XXXXX/XXXXX
+SLACK_WEBHOOK_URL=https://example.com/slack-webhook-url
 ```
 
 ---
@@ -350,9 +323,9 @@ SN_PASSWORD=YourStrongPassword123!
 SN_TABLE=sn_chg_management_update_set
 
 # ============================================================================
-# TEAMS CONFIGURATION
+# SLACK CONFIGURATION
 # ============================================================================
-TEAMS_WEBHOOK_URL=https://outlook.webhook.office.com/webhookb2/abc123/IncomingWebhook/def456/ghi789
+SLACK_WEBHOOK_URL=https://example.com/slack-webhook-url
 
 # ============================================================================
 # AGENT CONFIGURATION
@@ -421,18 +394,18 @@ print(f'✅ ServiceNow connected! Found {len(update_sets)} update sets')
 "
 ```
 
-#### Test Teams Webhook:
+#### Test Slack Webhook:
 ```bash
 python -c "
 from src.config import AppConfig
-from src.teams_notifier import TeamsNotifier
+from src.slack_notifier import SlackNotifier
 from src.models import SyncResult
 
 config = AppConfig.from_env()
-notifier = TeamsNotifier(config.teams)
+notifier = SlackNotifier(config.slack, config.servicenow)
 result = SyncResult(success=True, total_stories=0)
 notifier.send_error_notification('Test message from agent')
-print('✅ Teams webhook working!')
+print('✅ Slack webhook working!')
 "
 ```
 
@@ -474,7 +447,7 @@ python main.py --run
 - `SN_INSTANCE_URL`
 - `SN_USERNAME`
 - `SN_PASSWORD`
-- `TEAMS_WEBHOOK_URL`
+- `SLACK_WEBHOOK_URL`
 
 ### Error: "Authentication failed" from Jira
 
@@ -502,7 +475,7 @@ python main.py --run
 2. Check user has `admin` or `itil` role
 3. Ask ServiceNow admin to verify account
 
-### Error: "Failed to send Teams message"
+### Error: "Failed to send Slack message"
 
 **Causes:**
 - ❌ Wrong webhook URL
@@ -510,7 +483,7 @@ python main.py --run
 - ❌ Network connectivity issue
 
 **Solution:**
-1. Regenerate webhook in Teams
+1. Regenerate webhook in Slack
 2. Copy new URL to `.env`
 3. Test with curl command (see above)
 
@@ -564,7 +537,7 @@ chmod 600 .env
 
 - Jira API tokens: Generate new one monthly
 - ServiceNow password: Change every 90 days
-- Teams webhook: Regenerate annually
+- Slack webhook: Regenerate annually
 
 ### 4. Restrict Access
 
@@ -585,9 +558,10 @@ Check `logs/agent.log` regularly for:
 
 1. ✅ Configure all credentials in `.env`
 2. ✅ Run `python main.py --run --dry-run` to test
-3. ✅ Verify Teams message appears in channel
+3. ✅ Verify Slack message appears in channel
 4. ✅ Run `python main.py --run` to create first update sets
 5. ✅ Set up scheduling: `python main.py --schedule`
+6. ✅ Follow `THURSDAY_RUNBOOK.md` for weekly execution and append new Thursday requirements
 
 ---
 
@@ -598,7 +572,7 @@ If you get stuck:
 1. **Check logs**: `tail -f logs/agent.log`
 2. **Test individually**: Test each service separately
 3. **Verify credentials**: Double-check each value
-4. **Ask for help**: Contact your Jira/ServiceNow/Teams admin
+4. **Ask for help**: Contact your Jira/ServiceNow/Slack admin
 
 ---
 

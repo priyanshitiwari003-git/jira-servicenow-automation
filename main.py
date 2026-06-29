@@ -33,7 +33,8 @@ def main(run: bool, schedule: bool, dry_run: bool, reset_state: bool):
         logger.info(f"Initializing {config.agent.name}")
         logger.info(f"Jira: {config.jira.base_url} | Project: {config.jira.project_key}")
         logger.info(f"ServiceNow: {config.servicenow.instance_url}")
-        logger.info(f"Teams Webhook: {'Configured' if config.teams.webhook_url else 'Not configured'}")
+        logger.info(f"Slack Webhook: {'Configured' if config.slack.webhook_url else 'Not configured'}")
+        logger.info(f"Confluence: {'Configured' if config.confluence.enabled else 'Disabled'}")
 
         # Initialize agent
         agent = JiraServiceNowDeploymentAgent(config)

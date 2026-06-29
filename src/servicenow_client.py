@@ -1,5 +1,6 @@
 """ServiceNow API client for creating and managing update sets."""
 
+import collections
 import requests
 from typing import List, Optional, Dict, Any
 from requests.auth import HTTPBasicAuth
@@ -179,6 +180,66 @@ class ServiceNowClient(LoggerMixin):
         except Exception as e:
             self.logger.error(f"Failed to get update set {sys_id}: {e}")
             return None
+
+    def get_child_update_set_summaries(self, parent_sys_id: str, max_targets: int = 5) -> List[Dict[str, Any]]:
+        """Summarize captured updates for child update sets under a parent.
+
+        Args:
+            parent_sys_id: Parent update set sys_id
+            max_targets: Number of changed targets to include per child
+
+        Returns:
+            List of per-child summaries with action counts and top changed targets
+        """
+        summaries: List[Dict[str, Any]] = []
+        try:
+            children_resp = self._make_request(
+                'GET',
+                f'/api/now/table/{self.table}',
+                params={
+                    'sysparm_query': f'parent={parent_sys_id}^ORDERBYDESCsys_created_on',
+                    'sysparm_fields': 'sys_id,name,state,sys_created_on',
+                    'sysparm_limit': 200,
+                }
+            )
+            children = children_resp.get('result', [])
+
+            for child in children:
+                child_id = child.get('sys_id')
+                xml_resp = self._make_request(
+                    'GET',
+                    '/api/now/table/sys_update_xml',
+                    params={
+                        'sysparm_query': f'update_set={child_id}',
+                        'sysparm_fields': 'action,target_name,name,sys_id',
+                        'sysparm_limit': 1000,
+                    }
+                )
+                rows = xml_resp.get('result', [])
+
+                action_counts = collections.Counter()
+                target_counts = collections.Counter()
+                for row in rows:
+                    action = (row.get('action') or 'unknown').lower()
+                    action_counts[action] += 1
+                    target = (row.get('target_name') or row.get('name') or '').strip()
+                    if target:
+                        target_counts[target] += 1
+
+                summaries.append({
+                    'sys_id': child_id,
+                    'name': child.get('name'),
+                    'state': child.get('state'),
+                    'created_on': child.get('sys_created_on'),
+                    'total_changes': len(rows),
+                    'action_counts': dict(action_counts),
+                    'top_targets': [name for name, _ in target_counts.most_common(max_targets)],
+                })
+
+        except Exception as e:
+            self.logger.error(f"Failed to summarize child update sets for parent {parent_sys_id}: {e}")
+
+        return summaries
 
     def close(self):
         """Close the session."""

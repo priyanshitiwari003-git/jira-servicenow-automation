@@ -66,7 +66,7 @@ class StoryUpdateSetMapping(BaseModel):
 
 class SyncResult(BaseModel):
     """Result of a sync operation."""
-    success: bool
+    success: bool = False
     total_stories: int = 0
     synced_count: int = 0
     failed_count: int = 0
@@ -75,6 +75,7 @@ class SyncResult(BaseModel):
     parent_update_set_name: Optional[str] = None
     parent_update_set_id: Optional[str] = None
     created_child_update_sets: List[str] = Field(default_factory=list)
+    child_update_set_summaries: List[dict] = Field(default_factory=list)
     failed_stories: List[dict] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
     started_at: datetime = Field(default_factory=datetime.utcnow)
@@ -98,7 +99,6 @@ class AgentState(BaseModel):
     failed_syncs: int = 0
     last_error: Optional[str] = None
     last_error_time: Optional[datetime] = None
-    teams_message_sent: bool = False
 
     class Config:
         arbitrary_types_allowed = True

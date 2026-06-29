@@ -1,6 +1,6 @@
 # Jira-ServiceNow Deployment Automation Agent
 
-An intelligent automation agent that fetches Jira stories in "Ready for Deployment" status, extracts ServiceNow update set links from story comments, and creates a parent deployment update set in ServiceNow with all update sets as children. Sends detailed deployment reports to Microsoft Teams.
+An intelligent automation agent that fetches Jira stories in "Ready for Deployment" status, extracts ServiceNow update set links from story comments, and creates a parent deployment update set in ServiceNow with all update sets as children. Sends detailed deployment reports to Slack.
 
 ## Features
 
@@ -8,10 +8,10 @@ An intelligent automation agent that fetches Jira stories in "Ready for Deployme
 - 📝 **Comment Parsing**: Extracts ServiceNow update set links and IDs from story comments
 - 📦 **Hierarchy Creation**: Creates parent deployment update set with child update sets
 - 🎯 **Sprint Aware**: Links deployment to current Jira sprint
-- 💬 **Teams Reports**: Sends detailed deployment reports to Microsoft Teams channel
+- 💬 **Slack Reports**: Sends detailed deployment reports to Slack channel
 - ⏱️ **Scheduled Runs**: Automatically runs every Thursday morning (configurable)
 - 📊 **State Tracking**: Maintains state to track processed stories and created update sets
-- 🛡️ **Error Handling**: Robust error handling with Teams notifications
+- 🛡️ **Error Handling**: Robust error handling with Slack notifications
 - 🔐 **Secure Config**: Environment-based credential management
 
 ## Prerequisites
@@ -19,7 +19,7 @@ An intelligent automation agent that fetches Jira stories in "Ready for Deployme
 - Python 3.8+
 - Jira Cloud instance with API access
 - ServiceNow instance with API access
-- Microsoft Teams incoming webhook
+- Slack incoming webhook
 - Git
 
 ## Architecture
@@ -30,7 +30,7 @@ jira-servicenow-automation/
 │   ├── agent.py                    # Main deployment agent
 │   ├── jira_client.py             # Jira API + comment parsing
 │   ├── servicenow_client.py       # ServiceNow API integration
-│   ├── teams_notifier.py          # Microsoft Teams integration
+│   ├── slack_notifier.py          # Slack integration
 │   ├── config.py                  # Configuration management
 │   ├── models.py                  # Data models
 │   ├── logger.py                  # Structured logging
@@ -90,11 +90,20 @@ cp .env.example .env
 - **SN_PASSWORD**: ServiceNow password
 - **SN_TABLE**: Table name (default: sn_chg_management_update_set)
 
-#### Teams Configuration
+#### Slack Configuration
 
-- **TEAMS_WEBHOOK_URL**: Microsoft Teams incoming webhook URL
-  - [Create webhook](https://docs.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/connectors-using)
-  - Format: `https://outlook.webhook.office.com/webhookb2/...`
+- **SLACK_WEBHOOK_URL**: Slack incoming webhook URL
+  - [Create webhook](https://api.slack.com/messaging/webhooks)
+  - Example: `https://example.com/slack-webhook-url`
+
+#### Confluence Configuration
+
+- **CONFLUENCE_ENABLED**: Set to `True` to publish weekly deployment pages
+- **CONFLUENCE_BASE_URL**: Confluence base URL (e.g., `https://tomtom.atlassian.net/wiki`)
+- **CONFLUENCE_EMAIL**: Confluence account email for API auth
+- **CONFLUENCE_API_TOKEN**: Confluence API token
+- **CONFLUENCE_SPACE_KEY**: Confluence space key (e.g., `ITSM`)
+- **CONFLUENCE_PARENT_PAGE_ID**: Parent page id under which monthly sprint pages are created
 
 #### Agent Configuration
 
@@ -124,8 +133,18 @@ python main.py --run --dry-run
 
 ### Schedule for Thursdays at 9:00 AM
 
+This agent can run continuously and trigger automatically on Thursdays at the configured time.
+Use `THURSDAY_RUNBOOK.md` as the weekly execution checklist and append new Thursday requirements there.
+The same runbook includes a required step to update the weekly Confluence deployment page.
+
 ```bash
 python main.py --schedule
+```
+
+If you want a system-level schedule instead, set `RUN_ON_THURSDAY=True` and `RUN_TIME=09:00` in your `.env`, then use a cron job like:
+
+```bash
+0 9 * * 4 cd /workspaces/jira-servicenow-automation && python main.py --run
 ```
 
 ### Reset Agent State
@@ -185,19 +204,19 @@ For each update set extracted:
   - References Jira story for traceability
 ```
 
-### 6. Send Teams Report
+### 6. Send Slack Report
 
 ```
-Builds card with:
+Builds block message with:
   - Deployment summary (stories, counts)
   - Per-story breakdown (assignee, update sets)
   - Link to parent in ServiceNow
-Posts to Teams webhook
+Posts to Slack webhook
 ```
 
-## Teams Report Format
+## Slack Report Format
 
-The agent sends formatted card messages to Teams:
+The agent sends formatted block messages to Slack:
 
 ```
 📦 Deployment Report - SPRINT-12
@@ -297,13 +316,13 @@ WARN | Story has no update set links
 
 **Solution**: Ensure comments contain update set links in supported formats
 
-### Teams Webhook Errors
+### Slack Webhook Errors
 
 ```
-ERROR | Failed to send Teams message
+ERROR | Failed to send Slack message
 ```
 
-**Solution**: Verify webhook URL and Teams connectivity
+**Solution**: Verify webhook URL and Slack connectivity
 
 ### Reset State
 
@@ -325,9 +344,9 @@ matches = re.findall(pattern5, text)
 update_sets.extend(matches)
 ```
 
-### Customize Teams Report
+### Customize Slack Report
 
-Edit `src/teams_notifier.py` `_build_message()` method to change card layout, colors, or fields.
+Edit `src/slack_notifier.py` `_build_message()` method to change message layout, colors, or fields.
 
 ### Add Story Filter
 

@@ -46,7 +46,11 @@ class JiraClient(LoggerMixin):
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
-            self.logger.error(f"Jira API error: {e}")
+            response = getattr(e, 'response', None)
+            if response is not None:
+                self.logger.error(f"Jira API error: {e} | status={response.status_code} | body={response.text}")
+            else:
+                self.logger.error(f"Jira API error: {e}")
             raise
 
     def fetch_ready_for_deployment_stories(self) -> List[JiraStory]:
@@ -59,21 +63,23 @@ class JiraClient(LoggerMixin):
         self.logger.info(f"Fetching stories in '{self.config.story_status}' status | jql={jql}")
 
         stories = []
-        start_at = 0
         max_results = 50
+        next_page_token = None
 
         while True:
             try:
+                payload = {
+                    'jql': jql,
+                    'maxResults': max_results,
+                    'fields': ['summary', 'description', 'status', 'assignee', 'reporter', 'labels', 'created', 'updated']
+                }
+                if next_page_token:
+                    payload['nextPageToken'] = next_page_token
+
                 response = self._make_request(
-                    'GET',
-                    '/rest/api/3/search',
-                    params={
-                        'jql': jql,
-                        'startAt': start_at,
-                        'maxResults': max_results,
-                        'expand': 'changelog',
-                        'fields': 'summary,description,status,assignee,reporter,labels,created,updated'
-                    }
+                    'POST',
+                    '/rest/api/3/search/jql',
+                    json=payload
                 )
 
                 for issue in response.get('issues', []):
@@ -84,10 +90,8 @@ class JiraClient(LoggerMixin):
                         story.update_set_links = self._extract_update_set_links(story)
                         stories.append(story)
 
-                total = response.get('total', 0)
-                start_at += max_results
-
-                if start_at >= total:
+                next_page_token = response.get('nextPageToken')
+                if not next_page_token:
                     break
 
             except Exception as e:
@@ -108,16 +112,18 @@ class JiraClient(LoggerMixin):
         """
         try:
             fields = issue.get('fields', {})
+            assignee = fields.get('assignee') or {}
+            reporter = fields.get('reporter') or {}
 
             story = JiraStory(
                 key=issue.get('key'),
                 summary=fields.get('summary', ''),
-                description=fields.get('description'),
+                description=self._to_text(fields.get('description')),
                 status=fields.get('status', {}).get('name', 'Unknown'),
                 created=fields.get('created'),
                 updated=fields.get('updated'),
-                assignee=fields.get('assignee', {}).get('displayName'),
-                reporter=fields.get('reporter', {}).get('displayName'),
+                assignee=assignee.get('displayName'),
+                reporter=reporter.get('displayName'),
                 labels=fields.get('labels', []),
                 custom_fields=fields
             )
@@ -138,7 +144,7 @@ class JiraClient(LoggerMixin):
         try:
             response = self._make_request(
                 'GET',
-                f'/rest/api/3/issues/{story_key}',
+                f'/rest/api/3/issue/{story_key}',
                 params={'fields': 'comment'}
             )
 
@@ -147,7 +153,7 @@ class JiraClient(LoggerMixin):
                 comment = JiraComment(
                     id=comment_data.get('id'),
                     author=comment_data.get('author', {}).get('displayName'),
-                    body=comment_data.get('body', ''),
+                    body=self._to_text(comment_data.get('body')),
                     created=comment_data.get('created'),
                     updated=comment_data.get('updated')
                 )
@@ -157,6 +163,24 @@ class JiraClient(LoggerMixin):
         except Exception as e:
             self.logger.warning(f"Failed to get comments for {story_key}: {e}")
             return []
+
+    def _to_text(self, value) -> str:
+        """Convert Jira rich-text (ADF) or plain values to a best-effort text string."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            parts = [self._to_text(item) for item in value]
+            return "\n".join(part for part in parts if part).strip()
+        if isinstance(value, dict):
+            # ADF nodes usually store text in `text` and children in `content`.
+            text = value.get('text', '')
+            content = self._to_text(value.get('content', []))
+            if text and content:
+                return f"{text}\n{content}".strip()
+            return (text or content).strip()
+        return str(value)
 
     def _extract_update_set_links(self, story: JiraStory) -> List[str]:
         """Extract ServiceNow update set links from story comments.

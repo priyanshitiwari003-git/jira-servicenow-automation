@@ -31,57 +31,57 @@ def test_servicenow_client_init(sn_client):
 
 
 @patch('requests.Session.request')
-def test_create_update_set(mock_request, sn_client):
-    """Test creating update set."""
+def test_create_parent_update_set(mock_request, sn_client):
+    """Test creating a parent deployment update set."""
     mock_response = MagicMock()
     mock_response.json.return_value = {
         'result': {
             'sys_id': '12345',
-            'name': 'test_update_set'
-        }
-    }
-    mock_request.return_value = mock_response
-
-    update_set = UpdateSet(
-        name='test_update_set',
-        description='Test',
-        type='regular'
-    )
-
-    sys_id = sn_client.create_update_set(update_set)
-
-    assert sys_id == '12345'
-
-
-def test_create_update_set_dry_run(sn_client):
-    """Test creating update set in dry run mode."""
-    update_set = UpdateSet(
-        name='test_update_set',
-        description='Test',
-        type='regular'
-    )
-
-    sys_id = sn_client.create_update_set(update_set, dry_run=True)
-
-    assert sys_id.startswith('dry_run_')
-
-
-@patch('requests.Session.request')
-def test_create_parent_with_children(mock_request, sn_client):
-    """Test creating parent with children."""
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        'result': {
-            'sys_id': '99999',
             'name': 'parent_test'
         }
     }
     mock_request.return_value = mock_response
 
-    parent_sys_id = sn_client.create_parent_with_children(
+    sys_id = sn_client.create_parent_deployment_set(
         parent_name='parent_test',
-        child_names=['child1', 'child2'],
-        jira_story_key='TEST-1'
+        sprint_name='Sprint 1',
+        dry_run=False
     )
 
-    assert parent_sys_id is not None
+    assert sys_id == '12345'
+
+
+@patch('requests.Session.request')
+def test_create_child_update_set(mock_request, sn_client):
+    """Test creating a child update set."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        'result': {
+            'sys_id': '67890',
+            'name': 'child_test'
+        }
+    }
+    mock_request.return_value = mock_response
+
+    sys_id = sn_client.create_child_update_set(
+        update_set_name='child_test',
+        parent_sys_id='12345',
+        jira_story_key='TEST-1',
+        jira_story_summary='Test story',
+        dry_run=False
+    )
+
+    assert sys_id == '67890'
+
+
+def test_create_update_set_dry_run(sn_client):
+    """Test creating update set in dry run mode."""
+    sys_id = sn_client.create_child_update_set(
+        update_set_name='test_update_set',
+        parent_sys_id='parent123',
+        jira_story_key='TEST-1',
+        jira_story_summary='Test',
+        dry_run=True
+    )
+
+    assert sys_id == 'dry_run_test_update_set'
